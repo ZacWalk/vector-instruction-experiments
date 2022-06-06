@@ -4,7 +4,7 @@ Some experiments implementing SIMD algorithms on SSE2 and NEON intrinsics.
 
 Implements a routine to calculate the distance (difference) between two 64-byte vectors. Using C, SSE2 and NEON intrinsics.
 
-Current per results:
+Current perf results:
 
 | | C	| SSE	| NEON |
 | --- | ---	| ---	| --- |
