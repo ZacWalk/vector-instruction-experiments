@@ -43,7 +43,7 @@ struct vector64_t
 	};
 };
 
-uint32_t distance_c(const vector64_t* v1, const vector64_t* v2) 
+__forceinline uint32_t distance_c(const vector64_t* v1, const vector64_t* v2)
 {
 	uint32_t distance = 0;
 
@@ -56,7 +56,7 @@ uint32_t distance_c(const vector64_t* v1, const vector64_t* v2)
 	return distance;
 }
 
-uint32_t distance_sse(const vector64_t* v1, const vector64_t* v2)
+__forceinline uint32_t distance_sse(const vector64_t* v1, const vector64_t* v2)
 {
 #ifdef COMPILE_SIMD_INTRINSIC
 	if (sse2supported)
@@ -72,7 +72,7 @@ uint32_t distance_sse(const vector64_t* v1, const vector64_t* v2)
 	return 0;
 }
 
-uint32_t distance_neon(const vector64_t* v1, const vector64_t* v2)
+__forceinline uint32_t distance_neon(const vector64_t* v1, const vector64_t* v2)
 {
 #ifdef COMPILE_ARM_INTRINSIC
 	if (neon2supported)
