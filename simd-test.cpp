@@ -14,6 +14,16 @@
 #define COMPILE_ARM_INTRINSIC
 #endif
 
+static uint64_t now_ns()
+{
+	LARGE_INTEGER tps = { 0 };
+	QueryPerformanceFrequency(&tps);
+
+	LARGE_INTEGER pc = { 0 };
+	QueryPerformanceCounter(&pc);
+	return (pc.QuadPart * 1000000000ll) / tps.QuadPart;
+}
+
 static BOOL sse2supported = ::IsProcessorFeaturePresent(PF_XMMI64_INSTRUCTIONS_AVAILABLE);
 static BOOL neon2supported = ::IsProcessorFeaturePresent(PF_ARM_NEON_INSTRUCTIONS_AVAILABLE);
 
@@ -91,7 +101,41 @@ int main()
 	const auto v1 = make_hash("bq0zgkfbNEhAzGQ2V2W0stbpqQyQ04zrF0TgxmVoJf9O5Wk65EghJBca378cCggd");
 	const auto v2 = make_hash("e0MiFoM5x53XfZrCCKuH1VovqgJatp2qTR6q9UZwHkhAszSnztPzTlhTHR2xiA41");
 
-    std::cout << "Calc distance C:    " << std::hex << distance_c(v1, v2) << std::endl;
-	std::cout << "Calc distance SSE:  " << std::hex << distance_sse(v1, v2) << std::endl;
-	std::cout << "Calc distance NEON: " << std::hex << distance_neon(v1, v2) << std::endl;
+	// calculate distance various implimentations
+	const auto dc = distance_c(v1, v2);
+	const auto dsse = distance_sse(v1, v2);
+	const auto dneon = distance_neon(v1, v2);
+
+	const auto timing_iterations = 1000000ull;
+	auto total_difference = 0ull; // needed to avoid opptimizing out code	
+	
+	// measure time of [timing_iterations] distance calulations
+	auto start_time = now_ns();
+	for (int i = 0ull; i < timing_iterations; i++)
+	{
+		total_difference += distance_c(v1, v2);
+	}
+	const auto time_c = now_ns() - start_time;
+
+	start_time = now_ns();
+	for (int i = 0ull; i < timing_iterations; i++)
+	{
+		total_difference += distance_sse(v1, v2);
+	}
+	const auto time_sse = now_ns() - start_time;
+
+	start_time = now_ns();
+	for (int i = 0ull; i < timing_iterations; i++)
+	{
+		total_difference += distance_neon(v1, v2);
+	}
+	const auto time_neon = now_ns() - start_time;
+
+	// report results
+    std::cout << "Calc distance C:    " <<  dc << " (" << time_c << " nanoseconds) " << std::endl;
+	std::cout << "Calc distance SSE:  " <<  dsse << " (" << time_sse << " nanoseconds) " << std::endl;
+	std::cout << "Calc distance NEON: " <<  dneon << " (" << time_neon << " nanoseconds) " << std::endl;
+	std::cout << "Total difference: " << total_difference << std::endl;
+
+	return 0;
 }
