@@ -24,8 +24,10 @@ static uint64_t now_ns()
 	return (pc.QuadPart * 1000000000ll) / tps.QuadPart;
 }
 
-static BOOL sse2supported = ::IsProcessorFeaturePresent(PF_XMMI64_INSTRUCTIONS_AVAILABLE);
-static BOOL neon2supported = ::IsProcessorFeaturePresent(PF_ARM_NEON_INSTRUCTIONS_AVAILABLE);
+
+static BOOL sse2_supported = ::IsProcessorFeaturePresent(PF_XMMI64_INSTRUCTIONS_AVAILABLE);
+static BOOL avx_supported = ::IsProcessorFeaturePresent(PF_AVX2_INSTRUCTIONS_AVAILABLE);
+static BOOL neon_supported = ::IsProcessorFeaturePresent(PF_ARM_NEON_INSTRUCTIONS_AVAILABLE);
 
 static constexpr size_t hash_size = 64;
 
@@ -35,6 +37,7 @@ struct vector64_t
 	{
 #ifdef COMPILE_SIMD_INTRINSIC
 		__m128i mm[hash_size / 16];
+		__m512i aa;
 #endif
 #ifdef COMPILE_ARM_INTRINSIC
 		uint8x16_t nn[hash_size / 16];
@@ -43,9 +46,9 @@ struct vector64_t
 	};
 };
 
-__forceinline uint32_t distance_c(const vector64_t* v1, const vector64_t* v2)
+__forceinline uint64_t distance_c(const vector64_t* v1, const vector64_t* v2)
 {
-	uint32_t distance = 0;
+	uint64_t distance = 0;
 
 	for (int i = 0; i < hash_size; i++)
 	{
@@ -56,33 +59,51 @@ __forceinline uint32_t distance_c(const vector64_t* v1, const vector64_t* v2)
 	return distance;
 }
 
-__forceinline uint32_t distance_sse(const vector64_t* v1, const vector64_t* v2)
+__forceinline uint64_t distance_sse(const vector64_t* v1, const vector64_t* v2)
 {
 #ifdef COMPILE_SIMD_INTRINSIC
-	if (sse2supported)
+	if (sse2_supported)
 	{
-		__m128i dist = _mm_sad_epu8(v1->mm[0], v2->mm[0]);
-		dist = _mm_adds_epi16(dist, _mm_sad_epu8(v1->mm[1], v2->mm[1]));
-		dist = _mm_adds_epi16(dist, _mm_sad_epu8(v1->mm[2], v2->mm[2]));
-		dist = _mm_adds_epi16(dist, _mm_sad_epu8(v1->mm[3], v2->mm[3]));
-		return dist.m128i_i16[0] + dist.m128i_i16[4];
+		__m128i s0 = _mm_sad_epu8(v1->mm[0], v2->mm[0]);
+		__m128i s1 = _mm_sad_epu8(v1->mm[1], v2->mm[1]);
+		__m128i d0 = _mm_add_epi64(s0, s1);
+
+		__m128i s2 = _mm_sad_epu8(v1->mm[2], v2->mm[2]);
+		__m128i s3 = _mm_sad_epu8(v1->mm[3], v2->mm[3]);		
+		__m128i d1 = _mm_add_epi64(s2, s3);
+
+		__m128i d = _mm_add_epi64(d0, d1);		
+		return d.m128i_u64[0] + d.m128i_u64[1];
 	}	
 #endif
 
 	return 0;
 }
 
-__forceinline uint32_t distance_neon(const vector64_t* v1, const vector64_t* v2)
+__forceinline uint64_t distance_avx(const vector64_t* v1, const vector64_t* v2)
+{
+#ifdef COMPILE_SIMD_INTRINSIC
+	if (avx_supported)
+	{
+		__m512i d = _mm512_sad_epu8(v1->aa, v2->aa);
+		return _mm512_reduce_add_epi64(d);
+}
+#endif
+
+	return 0;
+}
+
+__forceinline uint64_t distance_neon(const vector64_t* v1, const vector64_t* v2)
 {
 #ifdef COMPILE_ARM_INTRINSIC
-	if (neon2supported)
+	if (neonSupported)
 	{
 		uint8x16_t dist = vpaddlq_u8(vabdq_u8(v1->nn[0], v2->nn[0]));
 		dist = vqaddq_u16(dist, vpaddlq_u8(vabdq_u8(v1->nn[1], v2->nn[1])));
 		dist = vqaddq_u16(dist, vpaddlq_u8(vabdq_u8(v1->nn[2], v2->nn[2])));
 		dist = vqaddq_u16(dist, vpaddlq_u8(vabdq_u8(v1->nn[3], v2->nn[3])));
 		auto result = vpaddlq_u32(vpaddlq_u16(dist));
-		return result.n128_i64[0] + result.n128_i64[1];
+		return result.n128_u64[0] + result.n128_u64[1];
 	}	
 #endif
 
@@ -104,6 +125,7 @@ int main()
 	// calculate distance various implimentations
 	const auto dc = distance_c(v1, v2);
 	const auto dsse = distance_sse(v1, v2);
+	const auto davx = distance_avx(v1, v2);
 	const auto dneon = distance_neon(v1, v2);
 
 	const auto timing_iterations = 1000000ull;
@@ -127,6 +149,13 @@ int main()
 	start_time = now_ns();
 	for (int i = 0ull; i < timing_iterations; i++)
 	{
+		total_difference += distance_avx(v1, v2);
+	}
+	const auto time_avx = now_ns() - start_time;
+
+	start_time = now_ns();
+	for (int i = 0ull; i < timing_iterations; i++)
+	{
 		total_difference += distance_neon(v1, v2);
 	}
 	const auto time_neon = now_ns() - start_time;
@@ -134,6 +163,7 @@ int main()
 	// report results
     std::cout << "Calc distance C:    " <<  dc << " (" << time_c << " nanoseconds) " << std::endl;
 	std::cout << "Calc distance SSE:  " <<  dsse << " (" << time_sse << " nanoseconds) " << std::endl;
+	std::cout << "Calc distance AVX:  " << davx << " (" << time_avx << " nanoseconds) " << std::endl;
 	std::cout << "Calc distance NEON: " <<  dneon << " (" << time_neon << " nanoseconds) " << std::endl;
 	std::cout << "Total difference: " << total_difference << std::endl;
 
