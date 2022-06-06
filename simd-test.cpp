@@ -96,7 +96,7 @@ __forceinline uint64_t distance_avx(const vector64_t* v1, const vector64_t* v2)
 __forceinline uint64_t distance_neon(const vector64_t* v1, const vector64_t* v2)
 {
 #ifdef COMPILE_ARM_INTRINSIC
-	if (neonSupported)
+	if (neon_supported)
 	{
 		uint8x16_t dist = vpaddlq_u8(vabdq_u8(v1->nn[0], v2->nn[0]));
 		dist = vqaddq_u16(dist, vpaddlq_u8(vabdq_u8(v1->nn[1], v2->nn[1])));
