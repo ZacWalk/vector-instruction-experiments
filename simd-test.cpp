@@ -77,10 +77,10 @@ __forceinline uint32_t distance_neon(const vector64_t* v1, const vector64_t* v2)
 #ifdef COMPILE_ARM_INTRINSIC
 	if (neon2supported)
 	{
-		uint8x16_t dist = vabdq_u8(v1->nn[0], v2->nn[0]);
-		dist = vqaddq_u16(dist, vabdq_u8(v1->nn[1], v2->nn[1]));
-		dist = vqaddq_u16(dist, vabdq_u8(v1->nn[2], v2->nn[2]));
-		dist = vqaddq_u16(dist, vabdq_u8(v1->nn[3], v2->nn[3]));
+		uint8x16_t dist = vpaddlq_u8(vabdq_u8(v1->nn[0], v2->nn[0]));
+		dist = vqaddq_u16(dist, vpaddlq_u8(vabdq_u8(v1->nn[1], v2->nn[1])));
+		dist = vqaddq_u16(dist, vpaddlq_u8(vabdq_u8(v1->nn[2], v2->nn[2])));
+		dist = vqaddq_u16(dist, vpaddlq_u8(vabdq_u8(v1->nn[3], v2->nn[3])));
 		auto result = vpaddlq_u32(vpaddlq_u16(dist));
 		return result.n128_i64[0] + result.n128_i64[1];
 	}	
