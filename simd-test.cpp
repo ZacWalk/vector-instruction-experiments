@@ -71,12 +71,19 @@ __forceinline uint64_t distance_sse(const vector64_t* v1, const vector64_t* v2)
 		__m128i d0 = _mm_add_epi64(s0, s1);
 
 		__m128i s2 = _mm_sad_epu8(v1->mm[2], v2->mm[2]);
-		__m128i s3 = _mm_sad_epu8(v1->mm[3], v2->mm[3]);		
+		__m128i s3 = _mm_sad_epu8(v1->mm[3], v2->mm[3]);
 		__m128i d1 = _mm_add_epi64(s2, s3);
 
-		__m128i d = _mm_add_epi64(d0, d1);		
-		return d.m128i_u64[0] + d.m128i_u64[1];
-	}	
+		__m128i d = _mm_add_epi64(d0, d1);
+		__m128i r = _mm_add_epi64(d, _mm_unpackhi_epi64(d, d));
+
+#if defined(_M_X64)
+		return _mm_cvtsi128_si64(r);
+#else
+		return _mm_cvtsi128_si32(r);
+#endif
+
+	}
 #endif
 
 	return 0;
@@ -90,7 +97,14 @@ __forceinline uint64_t distance_avx2(const vector64_t* v1, const vector64_t* v2)
 		__m256i d0 = _mm256_sad_epu8(v1->a256[0], v2->a256[0]);
 		__m256i d1 = _mm256_sad_epu8(v1->a256[1], v2->a256[1]);
 		__m256i d = _mm256_add_epi64(d0, d1);
-		return d.m256i_i64[0] + d.m256i_i64[1] + d.m256i_i64[2] + d.m256i_i64[3];
+		__m128i x = _mm_add_epi64(_mm256_castsi256_si128(d), _mm256_extracti128_si256(d, 1));
+		__m128i r = _mm_add_epi64(x, _mm_unpackhi_epi64(x, x));
+		
+#if defined(_M_X64)
+		return _mm_cvtsi128_si64(r);
+#else
+		return _mm_cvtsi128_si32(r);
+#endif
 	}
 #endif
 
@@ -104,7 +118,7 @@ __forceinline uint64_t distance_avx512(const vector64_t* v1, const vector64_t* v
 	{
 		__m512i d = _mm512_sad_epu8(v1->a512, v2->a512);
 		return _mm512_reduce_add_epi64(d);
-}
+	}
 #endif
 
 	return 0;
@@ -115,13 +129,11 @@ __forceinline uint64_t distance_neon(const vector64_t* v1, const vector64_t* v2)
 #ifdef COMPILE_ARM_INTRINSIC
 	if (neon_supported)
 	{
-		uint8x16_t dist = vpaddlq_u8(vabdq_u8(v1->nn[0], v2->nn[0]));
-		dist = vqaddq_u16(dist, vpaddlq_u8(vabdq_u8(v1->nn[1], v2->nn[1])));
-		dist = vqaddq_u16(dist, vpaddlq_u8(vabdq_u8(v1->nn[2], v2->nn[2])));
-		dist = vqaddq_u16(dist, vpaddlq_u8(vabdq_u8(v1->nn[3], v2->nn[3])));
-		auto result = vpaddlq_u32(vpaddlq_u16(dist));
-		return result.n128_u64[0] + result.n128_u64[1];
-	}	
+		uint8x16_t d0 = vqaddq_u16(vpaddlq_u8(vabdq_u8(v1->nn[0], v2->nn[0])), vpaddlq_u8(vabdq_u8(v1->nn[1], v2->nn[1])));
+		uint8x16_t d1 = vqaddq_u16(vpaddlq_u8(vabdq_u8(v1->nn[2], v2->nn[2])), vpaddlq_u8(vabdq_u8(v1->nn[3], v2->nn[3])));
+		uint32x4_t result = vpaddlq_u32(vpaddlq_u16(vqaddq_u16(d0, d1)));
+		return vgetq_lane_s64(result, 0);
+	}
 #endif
 
 	return 0;
@@ -148,7 +160,7 @@ int main()
 
 	const auto timing_iterations = 100000000ull;
 	auto total_difference = 0ull; // needed to avoid opptimizing out code	
-	
+
 	// measure time of [timing_iterations] distance calulations
 	auto start_time = now_ms();
 	for (int i = 0ull; i < timing_iterations; i++)
@@ -195,7 +207,7 @@ int main()
 	std::cout << "Total difference: " << total_difference << std::endl;
 	std::cout << std::endl << std::endl << "Performance (Milliseconds for 100,000,000 iterations):" << std::endl << std::endl;
 
-    std::cout << "| | C	| SSE | AVX2 | AVX512 | NEON |" << std::endl;
+	std::cout << "| | C	| SSE | AVX2 | AVX512 | NEON |" << std::endl;
 	std::cout << "| --- | --- | --- | --- | --- | --- |" << std::endl;
 	std::cout << "| | " << time_c << " | " << time_sse << " | " << time_avx2 << " | " << time_avx512 << " | " << time_neon << " | " << std::endl;
 
