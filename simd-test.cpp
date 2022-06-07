@@ -187,6 +187,7 @@ int main()
 
 	// report results
 	std::cout << "Results:" << std::endl << std::endl;
+	std::cout << "Calc distance C:  " << dc << std::endl;
 	std::cout << "Calc distance SSE:  " << dsse << std::endl;
 	std::cout << "Calc distance AVX2:  " << davx2 << std::endl;
 	std::cout << "Calc distance AVX512:  " << davx512 << std::endl;
