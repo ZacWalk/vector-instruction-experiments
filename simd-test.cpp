@@ -14,19 +14,20 @@
 #define COMPILE_ARM_INTRINSIC
 #endif
 
-static uint64_t now_ns()
+static uint64_t now_ms()
 {
 	LARGE_INTEGER tps = { 0 };
 	QueryPerformanceFrequency(&tps);
 
 	LARGE_INTEGER pc = { 0 };
 	QueryPerformanceCounter(&pc);
-	return (pc.QuadPart * 1000000000ll) / tps.QuadPart;
+	return (pc.QuadPart * 1000ll) / tps.QuadPart;
 }
 
 
 static BOOL sse2_supported = ::IsProcessorFeaturePresent(PF_XMMI64_INSTRUCTIONS_AVAILABLE);
-static BOOL avx_supported = ::IsProcessorFeaturePresent(PF_AVX2_INSTRUCTIONS_AVAILABLE);
+static BOOL avx2_supported = ::IsProcessorFeaturePresent(PF_AVX2_INSTRUCTIONS_AVAILABLE);
+static BOOL avx512_supported = ::IsProcessorFeaturePresent(PF_AVX512F_INSTRUCTIONS_AVAILABLE);
 static BOOL neon_supported = ::IsProcessorFeaturePresent(PF_ARM_NEON_INSTRUCTIONS_AVAILABLE);
 
 static constexpr size_t hash_size = 64;
@@ -37,7 +38,8 @@ struct vector64_t
 	{
 #ifdef COMPILE_SIMD_INTRINSIC
 		__m128i mm[hash_size / 16];
-		__m512i aa;
+		__m256i a256[hash_size / 32];
+		__m512i a512;
 #endif
 #ifdef COMPILE_ARM_INTRINSIC
 		uint8x16_t nn[hash_size / 16];
@@ -80,12 +82,27 @@ __forceinline uint64_t distance_sse(const vector64_t* v1, const vector64_t* v2)
 	return 0;
 }
 
-__forceinline uint64_t distance_avx(const vector64_t* v1, const vector64_t* v2)
+__forceinline uint64_t distance_avx2(const vector64_t* v1, const vector64_t* v2)
 {
 #ifdef COMPILE_SIMD_INTRINSIC
-	if (avx_supported)
+	if (avx2_supported)
 	{
-		__m512i d = _mm512_sad_epu8(v1->aa, v2->aa);
+		__m256i d0 = _mm256_sad_epu8(v1->a256[0], v2->a256[0]);
+		__m256i d1 = _mm256_sad_epu8(v1->a256[1], v2->a256[1]);
+		__m256i d = _mm256_add_epi64(d0, d1);
+		return d.m256i_i64[0] + d.m256i_i64[1] + d.m256i_i64[2] + d.m256i_i64[3];
+	}
+#endif
+
+	return 0;
+}
+
+__forceinline uint64_t distance_avx512(const vector64_t* v1, const vector64_t* v2)
+{
+#ifdef COMPILE_SIMD_INTRINSIC
+	if (avx512_supported)
+	{
+		__m512i d = _mm512_sad_epu8(v1->a512, v2->a512);
 		return _mm512_reduce_add_epi64(d);
 }
 #endif
@@ -125,47 +142,61 @@ int main()
 	// calculate distance various implimentations
 	const auto dc = distance_c(v1, v2);
 	const auto dsse = distance_sse(v1, v2);
-	const auto davx = distance_avx(v1, v2);
+	const auto davx2 = distance_avx2(v1, v2);
+	const auto davx512 = distance_avx512(v1, v2);
 	const auto dneon = distance_neon(v1, v2);
 
-	const auto timing_iterations = 1000000ull;
+	const auto timing_iterations = 100000000ull;
 	auto total_difference = 0ull; // needed to avoid opptimizing out code	
 	
 	// measure time of [timing_iterations] distance calulations
-	auto start_time = now_ns();
+	auto start_time = now_ms();
 	for (int i = 0ull; i < timing_iterations; i++)
 	{
 		total_difference += distance_c(v1, v2);
 	}
-	const auto time_c = now_ns() - start_time;
+	const auto time_c = now_ms() - start_time;
 
-	start_time = now_ns();
+	start_time = now_ms();
 	for (int i = 0ull; i < timing_iterations; i++)
 	{
 		total_difference += distance_sse(v1, v2);
 	}
-	const auto time_sse = now_ns() - start_time;
+	const auto time_sse = now_ms() - start_time;
 
-	start_time = now_ns();
+	start_time = now_ms();
 	for (int i = 0ull; i < timing_iterations; i++)
 	{
-		total_difference += distance_avx(v1, v2);
+		total_difference += distance_avx2(v1, v2);
 	}
-	const auto time_avx = now_ns() - start_time;
+	const auto time_avx2 = now_ms() - start_time;
 
-	start_time = now_ns();
+	start_time = now_ms();
+	for (int i = 0ull; i < timing_iterations; i++)
+	{
+		total_difference += distance_avx512(v1, v2);
+	}
+	const auto time_avx512 = now_ms() - start_time;
+
+	start_time = now_ms();
 	for (int i = 0ull; i < timing_iterations; i++)
 	{
 		total_difference += distance_neon(v1, v2);
 	}
-	const auto time_neon = now_ns() - start_time;
+	const auto time_neon = now_ms() - start_time;
 
 	// report results
-    std::cout << "Calc distance C:    " <<  dc << " (" << time_c << " nanoseconds) " << std::endl;
-	std::cout << "Calc distance SSE:  " <<  dsse << " (" << time_sse << " nanoseconds) " << std::endl;
-	std::cout << "Calc distance AVX:  " << davx << " (" << time_avx << " nanoseconds) " << std::endl;
-	std::cout << "Calc distance NEON: " <<  dneon << " (" << time_neon << " nanoseconds) " << std::endl;
+	std::cout << "Results:" << std::endl << std::endl;
+	std::cout << "Calc distance SSE:  " << dsse << std::endl;
+	std::cout << "Calc distance AVX2:  " << davx2 << std::endl;
+	std::cout << "Calc distance AVX512:  " << davx512 << std::endl;
+	std::cout << "Calc distance NEON: " << dneon << std::endl;
 	std::cout << "Total difference: " << total_difference << std::endl;
+	std::cout << std::endl << std::endl << "Performance (Milliseconds for 100,000,000 iterations):" << std::endl << std::endl;
+
+    std::cout << "| | C	| SSE | AVX2 | AVX512 | NEON |" << std::endl;
+	std::cout << "| --- | --- | --- | --- | --- | --- |" << std::endl;
+	std::cout << "| | " << time_c << " | " << time_sse << " | " << time_avx2 << " | " << time_avx512 << " | " << time_neon << " | " << std::endl;
 
 	return 0;
 }
