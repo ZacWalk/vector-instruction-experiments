@@ -132,7 +132,7 @@ __forceinline uint64_t distance_neon(const vector64_t* v1, const vector64_t* v2)
 		uint8x16_t d0 = vqaddq_u16(vpaddlq_u8(vabdq_u8(v1->nn[0], v2->nn[0])), vpaddlq_u8(vabdq_u8(v1->nn[1], v2->nn[1])));
 		uint8x16_t d1 = vqaddq_u16(vpaddlq_u8(vabdq_u8(v1->nn[2], v2->nn[2])), vpaddlq_u8(vabdq_u8(v1->nn[3], v2->nn[3])));
 		uint32x4_t result = vpaddlq_u32(vpaddlq_u16(vqaddq_u16(d0, d1)));
-		return vgetq_lane_s64(result, 0);
+		return vgetq_lane_s64(result, 0) + vgetq_lane_s64(result, 1);
 	}
 #endif
 
